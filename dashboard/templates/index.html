@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Load Shield -- IEEE 26-Bus -- Bus Voltage Stability</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+<script src="https://unpkg.com/@popperjs/core@2"></script>
+<script src="https://unpkg.com/tippy.js@6"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#050a18; --bg2:#0a1628; --bg3:#0f1d32;
+  --card:rgba(15,29,50,0.85); --card-border:rgba(56,189,248,0.15);
+  --green:#00e68a; --red:#ff4d6a; --amber:#ffb020; --cyan:#38bdf8;
+  --blue:#3b82f6; --purple:#a78bfa; --text:#e2e8f0; --text2:#94a3b8; --text3:#475569;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;}
+.header{background:linear-gradient(180deg,rgba(15,29,50,0.95),rgba(5,10,24,0.95));padding:10px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid rgba(56,189,248,0.2);}
+.header h1{font-size:17px;font-weight:700;background:linear-gradient(135deg,#38bdf8,#00e68a);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.header p{font-size:10px;color:var(--text2);margin-top:1px;}
+.header-badge{margin-left:auto;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:600;}
+.badge-stable{background:rgba(0,230,138,0.1);border:1px solid rgba(0,230,138,0.3);color:var(--green);}
+.badge-marginal{background:rgba(255,176,32,0.1);border:1px solid rgba(255,176,32,0.3);color:var(--amber);}
+.badge-unstable{background:rgba(255,77,106,0.1);border:1px solid rgba(255,77,106,0.3);color:var(--red);animation:pulse 1.5s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+.main{display:grid;grid-template-columns:220px 1fr 280px;height:calc(100vh - 46px - 24px);}
+.panel{background:var(--bg2);overflow-y:auto;padding:12px;}
+.panel-left{border-right:1px solid rgba(56,189,248,0.1);}
+.panel-right{border-left:1px solid rgba(56,189,248,0.1);}
+.section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--cyan);margin-bottom:10px;padding-bottom:5px;border-bottom:1px solid rgba(56,189,248,0.15);}
+.control{margin-bottom:12px;}
+.control label{display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin-bottom:3px;}
+.control .val{color:var(--cyan);font-family:'JetBrains Mono';font-weight:600;}
+input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:2px;background:var(--bg3);outline:none;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--cyan);cursor:pointer;}
+.auto-row{display:flex;align-items:center;gap:8px;margin:8px 0;}
+.auto-row label{font-size:11px;color:var(--text2);}
+.toggle{position:relative;width:36px;height:20px;}
+.toggle input{opacity:0;width:0;height:0;}
+.toggle-slider{position:absolute;inset:0;background:var(--bg3);border-radius:10px;cursor:pointer;transition:0.3s;}
+.toggle-slider::before{content:'';position:absolute;left:2px;top:2px;width:16px;height:16px;background:var(--text3);border-radius:50%;transition:0.3s;}
+.toggle input:checked+.toggle-slider{background:var(--cyan);}
+.toggle input:checked+.toggle-slider::before{transform:translateX(16px);background:#fff;}
+.cy-wrap{position:relative;width:100%;height:100%;}
+#cy{width:100%;height:100%;background:#050a18;}
+.cy-legend{position:absolute;left:10px;bottom:10px;background:rgba(10,18,35,0.92);border:1px solid #243247;border-radius:6px;padding:8px 10px;font-size:10px;color:#cbd5e1;z-index:20;box-shadow:0 2px 8px rgba(0,0,0,0.45);max-width:260px;}
+.cy-legend h4{margin:0 0 6px 0;font-size:10px;color:#93c5fd;letter-spacing:0.5px;text-transform:uppercase;}
+.cy-legend .row{display:flex;align-items:center;gap:6px;margin:2px 0;}
+.cy-legend .sw{display:inline-block;width:20px;height:20px;border-radius:50%;border:2px solid #3b82f6;background:#172554;flex-shrink:0;}
+.cy-legend .sw.gen{border-color:#10b981;background:#0f2a1e;}
+.cy-legend .sw.slack{border-color:#818cf8;background:#1e1b4b;width:24px;height:24px;border-width:3px;}
+.cy-legend .sw.pv{border-color:#fbbf24;background:#1a1a0a;}
+.cy-legend .sw.vhigh{border-color:#ff4d6a;border-width:4px;background:rgba(255,77,106,0.55);}
+.cy-legend .sw.vmed{border-color:#ffb020;border-width:3px;background:rgba(255,176,32,0.45);}
+.cy-legend .sw.vcrit{border-color:#ff4d6a;background:rgba(255,77,106,0.45);}
+.cy-legend .sw.vwarn{border-color:#ffb020;}
+.cy-legend .lsw{display:inline-block;width:20px;height:3px;background:#4a6fa5;border-radius:1px;}
+.cy-legend .lsw.warn{background:#ffb020;}
+.cy-legend .lsw.crit{background:#ff4d6a;}
+.cy-legend .lsw.trip{background:#555;border-top:1px dashed #888;height:2px;}
+.cy-legend .hint{color:#64748b;font-style:italic;margin-top:6px;font-size:9px;}
+.card{background:var(--card);border:1px solid var(--card-border);border-radius:10px;padding:10px;margin-bottom:8px;}
+.card.danger{border-color:rgba(255,77,106,0.4);background:rgba(255,77,106,0.05);}
+.card.safe{border-color:rgba(0,230,138,0.3);}
+.card.warning{border-color:rgba(255,176,32,0.4);background:rgba(255,176,32,0.05);}
+.card-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--text3);}
+.card-val{font-size:20px;font-weight:800;margin-top:3px;font-family:'JetBrains Mono';}
+.card-val.g{color:var(--green);}.card-val.r{color:var(--red);}.card-val.y{color:var(--amber);}.card-val.c{color:var(--cyan);}
+.card-sub{font-size:10px;color:var(--text3);margin-top:2px;}
+.bar{height:4px;background:var(--bg3);border-radius:2px;margin-top:5px;overflow:hidden;}
+.bar-fill{height:100%;border-radius:2px;transition:width 0.8s ease;}
+.risk-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:11px;}
+.risk-row:last-child{border:none;}
+.risk-val{font-family:'JetBrains Mono';font-weight:600;}
+.vuln-grid{display:grid;grid-template-columns:repeat(9,1fr);gap:3px;margin-top:6px;}
+.vuln-cell{text-align:center;padding:3px;border-radius:3px;font-size:8px;font-family:'JetBrains Mono';font-weight:600;}
+.status{position:fixed;bottom:0;left:0;right:0;background:var(--bg2);border-top:1px solid rgba(56,189,248,0.1);padding:5px 24px;font-size:10px;color:var(--text3);display:flex;justify-content:space-between;font-family:'JetBrains Mono';}
+.dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px;vertical-align:middle;}
+.dot-green{background:var(--green);box-shadow:0 0 6px var(--green);}
+.dot-amber{background:var(--amber);box-shadow:0 0 6px var(--amber);}
+.dot-red{background:var(--red);box-shadow:0 0 6px var(--red);}
+</style>
+</head>
+<body>
+<div class="header">
+  <div><h1>Smart Load Shield -- IEEE 26-Bus -- Bus Voltage Stability</h1><p>Proactive Contingency Screening -- Physics-Guided Graph-Attention Surrogate</p></div>
+  <div id="header-badge" class="header-badge badge-stable">SYSTEM STABLE</div>
+</div>
+
+<div class="main">
+  <!-- LEFT -->
+  <div class="panel panel-left">
+    <div class="section-title">Operating Conditions</div>
+    <div class="control">
+      <label>Load Scale <span class="val" id="lv">1.0x</span></label>
+      <input type="range" id="load-scale" min="0.5" max="3.0" step="0.1" value="1.0"
+        oninput="document.getElementById('lv').textContent=this.value+'x'; runMonitor()">
+    </div>
+
+    <div class="section-title" style="margin-top:10px">Renewable Energy</div>
+    <div class="auto-row">
+      <label class="toggle"><input type="checkbox" id="use-renewables" checked><span class="toggle-slider"></span></label>
+      <label>Enable PV (Bus 27)</label>
+    </div>
+    <div class="control" id="pv-control">
+      <label>PV Output (Bus 27) <span class="val" id="pv">100 MW</span></label>
+      <input type="range" id="pv-mw" min="10" max="200" step="5" value="100"
+        oninput="document.getElementById('pv').textContent=this.value+' MW'; runMonitor()">
+    </div>
+
+    <div id="fault-status" style="font-size:10px;color:var(--red);margin:6px 0;"></div>
+
+    <div class="auto-row">
+      <label class="toggle"><input type="checkbox" id="auto-monitor" checked><span class="toggle-slider"></span></label>
+      <label>Auto-monitor (2s)</label>
+    </div>
+
+    <div class="section-title" style="margin-top:8px">Grid Metrics</div>
+    <div class="risk-row"><span>Min Voltage</span><span class="risk-val" id="m-minv">--</span></div>
+    <div class="risk-row"><span>Max Loading</span><span class="risk-val" id="m-maxl">--</span></div>
+    <div class="risk-row"><span>Total Gen</span><span class="risk-val" id="m-gen">--</span></div>
+    <div class="risk-row"><span>Slack P (Bus 1)</span><span class="risk-val" id="m-slack">--</span></div>
+    <div class="risk-row"><span>Total Load</span><span class="risk-val" id="m-load">--</span></div>
+    <div class="risk-row"><span>Losses</span><span class="risk-val" id="m-loss">--</span></div>
+
+    <div class="section-title" style="margin-top:10px">Generation Data</div>
+    <div id="gen-panel"></div>
+  </div>
+
+  <!-- CENTER: CYTOSCAPE GRAPH -->
+  <div class="cy-wrap">
+    <div id="cy"></div>
+    <div class="cy-legend">
+      <h4>Legend</h4>
+      <div style="color:#93c5fd;font-size:9px;margin-bottom:2px;">Bus type (fill)</div>
+      <div class="row"><span class="sw"></span> Load bus</div>
+      <div class="row"><span class="sw gen"></span> Generator bus</div>
+      <div class="row"><span class="sw slack"></span> Slack bus (Bus 1)</div>
+      <div class="row"><span class="sw pv"></span> PV renewable bus (Bus 27)</div>
+      <div style="color:#93c5fd;font-size:9px;margin:6px 0 2px 0;">Bus status (border / tint)</div>
+      <div class="row"><span class="sw vwarn"></span> Low voltage (V &lt; 0.95 pu)</div>
+      <div class="row"><span class="sw vcrit"></span> Critical voltage (V &lt; 0.90 pu)</div>
+      <div class="row"><span class="sw vmed"></span> Model vulnerability 0.2 – 0.5</div>
+      <div class="row"><span class="sw vhigh"></span> Model vulnerability &gt; 0.5</div>
+      <div style="color:#93c5fd;font-size:9px;margin:6px 0 2px 0;">Line color (loading)</div>
+      <div class="row"><span class="lsw"></span> &lt; 50%</div>
+      <div class="row"><span class="lsw warn"></span> 50 – 80%</div>
+      <div class="row"><span class="lsw crit"></span> &gt; 80%</div>
+      <div class="row"><span class="lsw trip"></span> Tripped (click to reconnect)</div>
+      <div class="hint">Click a line to trip/reconnect. Vulnerability = model-predicted risk of driving cascade.</div>
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="panel panel-right">
+    <div class="section-title">Stability Assessment</div>
+    <div class="card" id="card-risk">
+      <div class="card-label">System Risk Level</div>
+      <div class="card-val g" id="risk-value">STABLE</div>
+      <div class="card-sub" id="risk-sub">Monitoring...</div>
+      <div style="display:flex;gap:4px;margin-top:6px;">
+        <div style="flex:1;text-align:center;"><div style="font-size:9px;color:var(--text3);">Stable</div>
+          <div class="bar"><div class="bar-fill" id="prob-s" style="width:100%;background:var(--green)"></div></div>
+          <div style="font-size:10px;color:var(--green);font-family:'JetBrains Mono'" id="prob-s-val">--</div></div>
+        <div style="flex:1;text-align:center;"><div style="font-size:9px;color:var(--text3);">Marginal</div>
+          <div class="bar"><div class="bar-fill" id="prob-m" style="width:0%;background:var(--amber)"></div></div>
+          <div style="font-size:10px;color:var(--amber);font-family:'JetBrains Mono'" id="prob-m-val">--</div></div>
+        <div style="flex:1;text-align:center;"><div style="font-size:9px;color:var(--text3);">Unstable</div>
+          <div class="bar"><div class="bar-fill" id="prob-u" style="width:0%;background:var(--red)"></div></div>
+          <div style="font-size:10px;color:var(--red);font-family:'JetBrains Mono'" id="prob-u-val">--</div></div>
+      </div>
+    </div>
+
+    <div class="card" id="card-pvmin">
+      <div class="card-label">Predicted Post-Contingency Min Voltage</div>
+      <div class="card-val c" id="pvmin-value">--</div>
+      <div class="card-sub">surrogate prediction &mdash; no power-flow solve</div>
+      <div class="bar"><div class="bar-fill" id="pvmin-bar" style="width:0%;background:var(--cyan)"></div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Bus Vulnerability Map (27 Buses)</div>
+      <div class="vuln-grid" id="vuln-grid"></div>
+    </div>
+
+    <div class="card" id="card-medical">
+      <div class="card-label">System Voltage Status</div>
+      <div class="card-val g" id="med-value">SAFE</div>
+      <div class="card-sub" id="med-sub">All bus voltages nominal</div>
+    </div>
+  </div>
+</div>
+
+<div class="status">
+  <span><span class="dot dot-green" id="status-dot"></span>
+    <span>ContingencyGNN Active | IEEE 26-Bus | Graph-Attention Surrogate | Port 5003</span></span>
+  <span id="inf-time"></span>
+</div>
+
+<script>
+var cy, autoTimer, lineData=[], trafoData=[];
+var faultedLines = new Set(), faultedTrafos = new Set();
+var lineStatusData = {};
+var GEN_BUSES = new Set([1,2,3,4,5,26,27]);
+
+// Bus positions for preset layout (matching Fig. 1 structure)
+var BUS_POS = {
+  1:{x:400,y:80},
+  27:{x:580,y:720},  // col of Bus 20, row of Bus 21 (per Dr. Ahmad rewire)
+  2:{x:350,y:160}, 3:{x:550,y:160},
+  26:{x:100,y:200}, 5:{x:200,y:260}, 8:{x:400,y:260}, 13:{x:650,y:260},
+  18:{x:80,y:340}, 6:{x:250,y:340}, 7:{x:370,y:340}, 4:{x:500,y:340},
+  9:{x:300,y:420}, 12:{x:420,y:420}, 14:{x:530,y:420}, 16:{x:700,y:420},
+  11:{x:100,y:500}, 25:{x:220,y:500}, 19:{x:380,y:500}, 10:{x:520,y:500},
+  23:{x:250,y:580}, 24:{x:400,y:580}, 15:{x:600,y:580},
+  22:{x:420,y:650}, 20:{x:580,y:650},
+  21:{x:350,y:720}, 17:{x:200,y:800}
+};
+
+async function initGraph() {
+  // Load line/trafo data
+  var r = await fetch('/api/lines');
+  var d = await r.json();
+  lineData = d.lines; trafoData = d.trafos;
+
+  // Build cytoscape elements
+  var nodes = [];
+  Object.keys(BUS_POS).forEach(function(k) {
+    var bid = parseInt(k);
+    var isGen = GEN_BUSES.has(bid);
+    nodes.push({
+      data: {id:'b'+bid, label: bid===1?'S':String(bid), busId:bid, isGen:isGen, voltage:'--'},
+      position: {x:BUS_POS[bid].x, y:BUS_POS[bid].y},
+    });
+  });
+
+  var edges = [];
+  lineData.forEach(function(l) {
+    edges.push({data:{id:'line_'+l.index, source:'b'+l.from, target:'b'+l.to, lineIdx:l.index, edgeType:'line', tripped:false}});
+  });
+  trafoData.forEach(function(t) {
+    edges.push({data:{id:'trafo_'+t.index, source:'b'+t.hv, target:'b'+t.lv, trafoIdx:t.index, edgeType:'trafo', tripped:false}});
+  });
+
+  cy = cytoscape({
+    container: document.getElementById('cy'),
+    elements: {nodes:nodes, edges:edges},
+    style: [
+      {selector:'node', style:{
+        'width':28, 'height':28,
+        'background-color':'#172554',
+        'border-width':2, 'border-color':'#3b82f6',
+        'label':'data(label)', 'text-valign':'center', 'text-halign':'center',
+        'font-size':10, 'font-weight':'bold', 'color':'#93c5fd', 'font-family':'Inter',
+        'text-outline-width':0,
+      }},
+      {selector:'node[?isGen]', style:{
+        'background-color':'#0f2a1e', 'border-color':'#10b981', 'color':'#6ee7b7',
+      }},
+      {selector:'node[busId=1]', style:{
+        'width':36, 'height':36, 'background-color':'#1e1b4b', 'border-color':'#818cf8',
+        'border-width':3, 'color':'#c4b5fd', 'font-size':12,
+      }},
+      {selector:'node[busId=27]', style:{
+        'background-color':'#1a1a0a', 'border-color':'#fbbf24', 'color':'#fcd34d',
+      }},
+      {selector:'edge[edgeType="line"]', style:{
+        'width':2, 'line-color':'#4a6fa5', 'curve-style':'taxi',
+        'taxi-direction':'downward', 'taxi-turn':'50%',
+      }},
+      {selector:'edge[edgeType="trafo"]', style:{
+        'width':3, 'line-color':'#a78bfa', 'line-style':'dotted', 'curve-style':'taxi',
+        'taxi-direction':'downward', 'taxi-turn':'50%',
+      }},
+      {selector:'edge[?tripped]', style:{
+        'line-color':'#ff4d6a', 'line-style':'dashed', 'opacity':0.5, 'width':3,
+      }},
+      {selector:'edge:active', style:{'overlay-opacity':0}},
+      {selector:'node.vuln-high', style:{'border-color':'#ff4d6a','border-width':4,'background-color':'rgba(255,77,106,0.2)'}},
+      {selector:'node.vuln-med', style:{'border-color':'#ffb020','border-width':3,'background-color':'rgba(255,176,32,0.15)'}},
+      {selector:'node.v-warn', style:{'border-color':'#ffb020'}},
+      {selector:'node.v-crit', style:{'border-color':'#ff4d6a','background-color':'rgba(255,77,106,0.15)'}},
+    ],
+    layout:{name:'preset'},
+    userZoomingEnabled:true, userPanningEnabled:true,
+    boxSelectionEnabled:false, autoungrabify:true,
+  });
+
+  // Click edge to trip/reconnect
+  cy.on('tap', 'edge', function(evt) {
+    var e = evt.target;
+    var type = e.data('edgeType');
+    if (type === 'line') {
+      var idx = e.data('lineIdx');
+      if (faultedLines.has(idx)) { faultedLines.delete(idx); e.data('tripped',false); }
+      else { faultedLines.add(idx); e.data('tripped',true); }
+    } else {
+      var idx = e.data('trafoIdx');
+      if (faultedTrafos.has(idx)) { faultedTrafos.delete(idx); e.data('tripped',false); }
+      else { faultedTrafos.add(idx); e.data('tripped',true); }
+    }
+    runMonitor();
+  });
+
+  // Hover card (HTML div that follows mouse)
+  var hoverCard = document.createElement('div');
+  hoverCard.id = 'hover-card';
+  hoverCard.style.cssText = 'display:none;position:fixed;background:rgba(10,22,40,0.95);border:1px solid rgba(56,189,248,0.4);border-radius:8px;padding:10px 14px;font-size:11px;color:#e2e8f0;pointer-events:none;z-index:9999;min-width:170px;box-shadow:0 4px 20px rgba(0,0,0,0.5);font-family:JetBrains Mono,monospace;';
+  document.body.appendChild(hoverCard);
+
+  cy.on('mouseover', 'edge', function(evt) {
+    var e = evt.target;
+    var src = e.source().data('busId'), tgt = e.target().data('busId');
+    var type = e.data('edgeType');
+    var idx = type==='line' ? e.data('lineIdx') : e.data('trafoIdx');
+    var isFaulted = type==='line' ? faultedLines.has(idx) : faultedTrafos.has(idx);
+    var ls = lineStatusData[type+'_'+idx];
+    var loading = ls ? ls.loading.toFixed(1)+'%' : '--';
+    var loadColor = '#94a3b8';
+    if(ls&&ls.loading>80) loadColor='#ff4d6a';
+    else if(ls&&ls.loading>50) loadColor='#ffb020';
+    else if(ls&&ls.loading>0) loadColor='#00e68a';
+
+    // Static R/X/B values from Dr. Ahmad's image_4_large.png
+    var spec = (type==='line')
+      ? lineData.find(function(l){return l.index===idx;})
+      : trafoData.find(function(t){return t.index===idx;});
+
+    var specHtml = '';
+    if(spec){
+      if(type==='line'){
+        specHtml =
+          '<div style="margin-top:4px;border-top:1px solid #243247;padding-top:3px;font-size:10px;color:#94a3b8;">From Dr. Ahmad data table:</div>'+
+          '<div>R: <span style="color:#cbd5e1;">'+spec.r_pu.toFixed(4)+' pu</span></div>'+
+          '<div>X: <span style="color:#cbd5e1;">'+spec.x_pu.toFixed(4)+' pu</span></div>'+
+          '<div>B/2: <span style="color:#cbd5e1;">'+spec.b_half_pu.toFixed(4)+' pu</span></div>';
+      } else {
+        specHtml =
+          '<div style="margin-top:4px;border-top:1px solid #243247;padding-top:3px;font-size:10px;color:#94a3b8;">From Dr. Ahmad data table:</div>'+
+          '<div>R: <span style="color:#cbd5e1;">'+spec.r_pu.toFixed(4)+' pu</span></div>'+
+          '<div>X: <span style="color:#cbd5e1;">'+spec.x_pu.toFixed(4)+' pu</span></div>'+
+          '<div>Tap: <span style="color:#cbd5e1;">'+spec.tap.toFixed(3)+'</span></div>';
+      }
+    }
+
+    hoverCard.innerHTML =
+      '<div style="font-weight:700;color:#38bdf8;margin-bottom:4px;">'+(type==='trafo'?'Transformer':'Line')+' '+src+' - '+tgt+'</div>'+
+      '<div>Status: '+(isFaulted?'<span style="color:#ff4d6a;font-weight:700;">TRIPPED</span>':'<span style="color:#00e68a;">In Service</span>')+'</div>'+
+      '<div>Loading: <span style="color:'+loadColor+';font-weight:600;">'+loading+'</span></div>'+
+      specHtml+
+      '<div style="margin-top:4px;font-size:9px;color:#475569;">Click to '+(isFaulted?'reconnect':'trip')+'</div>';
+    hoverCard.style.display = 'block';
+    e.style('width', isFaulted?3:4);
+  });
+
+  cy.on('mousemove', function(evt) {
+    if(hoverCard.style.display==='block') {
+      hoverCard.style.left = (evt.originalEvent.clientX+15)+'px';
+      hoverCard.style.top = (evt.originalEvent.clientY-10)+'px';
+    }
+  });
+
+  cy.on('mouseout', 'edge', function(evt) {
+    hoverCard.style.display = 'none';
+    var e = evt.target;
+    var type = e.data('edgeType');
+    var idx = type==='line' ? e.data('lineIdx') : e.data('trafoIdx');
+    var isFaulted = type==='line' ? faultedLines.has(idx) : faultedTrafos.has(idx);
+    e.style('width', type==='trafo'?3:2);
+  });
+
+  // Hover node: show bus info card
+  cy.on('mouseover', 'node', function(evt) {
+    var n = evt.target;
+    var bid = n.data('busId');
+    var v = parseFloat(n.data('voltage'));
+    var isGen = n.data('isGen');
+    var vuln = n.data('vulnerability');
+    var ang = n.data('angle');
+    var pmw = n.data('p_mw');
+    var qmv = n.data('q_mvar');
+    var vColor = v>=0.95?'#00e68a':v>=0.90?'#ffb020':'#ff4d6a';
+    var vulnStr = '—', vulnColor = '#64748b';
+    if(vuln !== undefined && vuln !== null){
+      vulnStr = (vuln*100).toFixed(1)+'%';
+      vulnColor = vuln>0.5?'#ff4d6a':vuln>0.2?'#ffb020':'#22d3ee';
+    }
+    hoverCard.innerHTML =
+      '<div style="font-weight:700;color:#38bdf8;margin-bottom:4px;">Bus '+bid+(isGen?' (Generator)':bid==1?' (Slack)':bid==27?' (PV renewable)':' (Load)')+'</div>'+
+      '<div>Voltage: <span style="color:'+vColor+';font-weight:600;">'+(v?v.toFixed(4):'—')+' pu</span></div>'+
+      (ang!==undefined?'<div>Angle: <span style="color:#cbd5e1;">'+ang+'°</span></div>':'')+
+      (pmw!==undefined?'<div>P: <span style="color:#cbd5e1;">'+pmw+' MW</span>  Q: <span style="color:#cbd5e1;">'+qmv+' MVAr</span></div>':'')+
+      '<div style="margin-top:3px;border-top:1px solid #243247;padding-top:3px;">Vulnerability: <span style="color:'+vulnColor+';font-weight:600;">'+vulnStr+'</span></div>'+
+      '<div style="font-size:9px;color:#64748b;">Model-predicted cascade risk</div>';
+    hoverCard.style.display = 'block';
+  });
+
+  cy.on('mouseout', 'node', function() { hoverCard.style.display = 'none'; });
+
+  // Fit and start monitoring
+  cy.fit(undefined, 30);
+  runMonitor();
+  startAuto();
+}
+
+function vulnColor(v) {
+  return v>0.7?'rgba(255,77,106,0.3)':v>0.4?'rgba(255,176,32,0.3)':v>0.15?'rgba(56,189,248,0.15)':'var(--bg3)';
+}
+
+async function runMonitor() {
+  var t0 = performance.now();
+  var useRE = document.getElementById('use-renewables').checked;
+  var body = {
+    load_scale: parseFloat(document.getElementById('load-scale').value),
+    pv_mw: useRE ? parseFloat(document.getElementById('pv-mw').value) : 0,
+    use_renewables: useRE,
+    disconnect_lines: Array.from(faultedLines),
+    disconnect_trafos: Array.from(faultedTrafos),
+  };
+
+  try {
+    var r = await fetch('/api/monitor',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    var d = await r.json();
+    document.getElementById('inf-time').textContent = 'Inference: '+(performance.now()-t0).toFixed(0)+'ms';
+
+    var fs = document.getElementById('fault-status');
+    if (d.disconnected && d.disconnected.length > 0) fs.textContent = 'FAULTED: '+d.disconnected.join(', ');
+    else fs.textContent = '';
+
+    if (!d.converged) { showUnstable(d.message||'Power flow DIVERGED'); return; }
+    updateUI(d);
+  } catch(e) { console.error(e); }
+}
+
+function showUnstable(msg) {
+  document.getElementById('risk-value').textContent='UNSTABLE';
+  document.getElementById('risk-value').className='card-val r';
+  document.getElementById('risk-sub').textContent=msg;
+  document.getElementById('card-risk').className='card danger';
+  updateBadge(2);
+}
+
+function updateBadge(rc) {
+  var b=document.getElementById('header-badge'), dot=document.getElementById('status-dot');
+  if(rc===0){b.className='header-badge badge-stable';b.textContent='SYSTEM STABLE';dot.className='dot dot-green';}
+  else if(rc===1){b.className='header-badge badge-marginal';b.textContent='MARGINAL WARNING';dot.className='dot dot-amber';}
+  else{b.className='header-badge badge-unstable';b.textContent='UNSTABLE - ACTION NEEDED';dot.className='dot dot-red';}
+}
+
+function updateUI(d) {
+  var p=d.prediction, m=d.metrics;
+  var rc=p.risk_class;
+  var labels=['STABLE','MARGINAL','UNSTABLE'], cls=['g','y','r'], ccls=['safe','warning','danger'];
+  document.getElementById('risk-value').textContent=labels[rc];
+  document.getElementById('risk-value').className='card-val '+cls[rc];
+  document.getElementById('risk-sub').textContent='S:'+( p.risk_probs.stable*100).toFixed(1)+'% M:'+(p.risk_probs.marginal*100).toFixed(1)+'% U:'+(p.risk_probs.unstable*100).toFixed(1)+'%';
+  document.getElementById('card-risk').className='card '+ccls[rc];
+  document.getElementById('prob-s').style.width=(p.risk_probs.stable*100)+'%';
+  document.getElementById('prob-m').style.width=(p.risk_probs.marginal*100)+'%';
+  document.getElementById('prob-u').style.width=(p.risk_probs.unstable*100)+'%';
+  document.getElementById('prob-s-val').textContent=(p.risk_probs.stable*100).toFixed(1)+'%';
+  document.getElementById('prob-m-val').textContent=(p.risk_probs.marginal*100).toFixed(1)+'%';
+  document.getElementById('prob-u-val').textContent=(p.risk_probs.unstable*100).toFixed(1)+'%';
+  updateBadge(rc);
+
+  // Predicted post-contingency minimum voltage (surrogate output)
+  var pv=(p.predicted_min_voltage!=null)?p.predicted_min_voltage:0;
+  var pvEl=document.getElementById('pvmin-value');
+  pvEl.textContent=pv.toFixed(4)+' pu';
+  pvEl.className='card-val '+(pv>=0.95?'c':pv>=0.90?'y':'r');
+  var pvbar=document.getElementById('pvmin-bar');
+  pvbar.style.width=Math.max(0,Math.min((pv-0.80)/0.20*100,100))+'%';
+  pvbar.style.background=pv>=0.95?'var(--cyan)':pv>=0.90?'var(--amber)':'var(--red)';
+  document.getElementById('card-pvmin').className='card '+(pv>=0.95?'safe':pv>=0.90?'warning':'danger');
+
+  // Vulnerability grid
+  var vg=document.getElementById('vuln-grid'); vg.innerHTML='';
+  var busIds = Object.keys(BUS_POS).map(Number).sort(function(a,b){return a-b;});
+  p.bus_vulnerability.forEach(function(v,i){
+    var bid = i < busIds.length ? busIds[i] : i+1;
+    var pct=(v*100).toFixed(0);
+    var bg=vulnColor(v), tc=v>0.7?'var(--red)':v>0.4?'var(--amber)':'var(--text3)';
+    vg.innerHTML+='<div class="vuln-cell" style="background:'+bg+';color:'+tc+';">B'+bid+'<br>'+pct+'%</div>';
+  });
+
+  // Medical
+  var minV=m.min_voltage;
+  var mc=document.getElementById('card-medical'),mv=document.getElementById('med-value'),ms=document.getElementById('med-sub');
+  if(minV>0.95){mv.textContent='SAFE';mv.className='card-val g';ms.textContent='Min: '+minV.toFixed(4)+' pu';mc.className='card safe';}
+  else if(minV>0.90){mv.textContent='WARNING';mv.className='card-val y';ms.textContent='Min: '+minV.toFixed(4)+' pu (voltage sag)';mc.className='card warning';}
+  else{mv.textContent='CRITICAL';mv.className='card-val r';ms.textContent='Min: '+minV.toFixed(4)+' pu (SEVERE)';mc.className='card danger';}
+
+  // Metrics (handle null for islanded scenarios)
+  function fmt(x, suffix, dec) { return x==null ? '—' : x.toFixed(dec)+suffix; }
+  document.getElementById('m-minv').textContent = fmt(m.min_voltage, ' pu', 4);
+  document.getElementById('m-minv').style.color = m.min_voltage==null ? 'var(--red)' : (m.min_voltage<0.95?'var(--red)':m.min_voltage<0.97?'var(--amber)':'var(--green)');
+  document.getElementById('m-maxl').textContent = fmt(m.max_loading, '%', 1);
+  document.getElementById('m-gen').textContent  = fmt(m.total_gen_mw, ' MW', 1);
+  document.getElementById('m-slack').textContent= fmt(m.slack_p_mw,   ' MW', 1);
+  document.getElementById('m-load').textContent = fmt(m.total_load_mw,' MW', 1);
+  document.getElementById('m-loss').textContent = fmt(m.losses_mw||0, ' MW', 1);
+
+  // Generators
+  var gp=document.getElementById('gen-panel'),gh='';
+  if(d.generators&&Array.isArray(d.generators)){
+    d.generators.forEach(function(g){gh+='<div class="risk-row"><span>'+g.name+'</span><span class="risk-val">'+g.p_mw+' MW</span></div>';});
+  }
+  gp.innerHTML=gh;
+
+  // Update cytoscape nodes
+  if(cy){
+    d.buses.forEach(function(b,i){
+      var n=cy.getElementById('b'+b.bus_id);
+      if(n.length){
+        n.data('voltage', b.voltage);
+        n.data('vulnerability', b.vulnerability);
+        n.data('angle', b.angle);
+        n.data('p_mw', b.p_mw);
+        n.data('q_mvar', b.q_mvar);
+        n.removeClass('v-warn v-crit vuln-high vuln-med');
+        if(b.voltage<0.90) n.addClass('v-crit');
+        else if(b.voltage<0.95) n.addClass('v-warn');
+        var v=b.vulnerability;
+        if(v>0.5) n.addClass('vuln-high');
+        else if(v>0.2) n.addClass('vuln-med');
+      }
+    });
+
+    // Store line status
+    if(d.line_status){
+      d.line_status.forEach(function(ls){
+        lineStatusData['line_'+ls.index]=ls;
+        // Color edges by loading
+        var e=cy.getElementById('line_'+ls.index);
+        if(e.length&&ls.in_service&&!faultedLines.has(ls.index)){
+          if(ls.loading>80) e.style('line-color','#ff4d6a');
+          else if(ls.loading>50) e.style('line-color','#ffb020');
+          else e.style('line-color','#4a6fa5');
+        }
+      });
+    }
+  }
+}
+
+function startAuto(){
+  if(autoTimer)clearInterval(autoTimer);
+  autoTimer=setInterval(function(){if(document.getElementById('auto-monitor').checked)runMonitor();},2000);
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+  document.getElementById('use-renewables').addEventListener('change',function(){
+    document.getElementById('pv-control').style.display=this.checked?'block':'none'; runMonitor();
+  });
+  document.getElementById('auto-monitor').addEventListener('change',function(){
+    if(this.checked)startAuto();else if(autoTimer)clearInterval(autoTimer);
+  });
+  initGraph();
+});
+</script>
+</body>
+</html>
