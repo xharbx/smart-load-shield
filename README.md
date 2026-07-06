@@ -98,4 +98,4 @@ The notebooks in `notebooks/` reproduce the training and the study tables. They 
 
 ## License
 
-Released for academic use. See `LICENSE` (add one before submission, e.g. MIT).
+Released under the MIT License — see [`LICENSE`](LICENSE).
