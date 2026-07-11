@@ -29,7 +29,6 @@ A held-out-branch study honestly bounds the safety property: it holds across uns
 
 ```
 smart-load-shield/
-├── paper/paper.pdf              # the manuscript
 ├── code/                        # reproduction pipeline (run scripts from here)
 │   ├── boost_core.py            #   model definition + training (CSGNNv2, masked coupled multi-task)
 │   ├── ieee26_bus.py            #   27-bus network builder (26-bus benchmark + PV Bus 27)
