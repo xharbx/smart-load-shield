@@ -13,10 +13,10 @@ import os, sys
 from copy import deepcopy
 from flask import Flask, render_template, jsonify, request
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+# ieee26_bus.py lives in code/; boost_core.py and the checkpoint sit beside
+# this file, so the script's own directory (already on sys.path) covers those.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'code'))
 from ieee26_bus import build_ieee26, add_bus27_pv
-
-from model_cs import ContingencyGNN
 
 SAVE_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__)
@@ -31,9 +31,12 @@ except AttributeError:
 # ============================================================
 # LOAD MODEL + DATA
 # ============================================================
-print("Loading 26-bus model...")
+print("Loading network topology and normalisation assets...")
 
-data = np.load(os.path.join(SAVE_DIR, 'proactive_26bus_data.npz'))
+# Topology metadata and normalisation constants for the dashboard. These were
+# previously read out of the 30,000-scenario corpus file; they are ten small
+# arrays, so they are shipped separately rather than requiring a 23 MB download.
+data = np.load(os.path.join(SAVE_DIR, 'dashboard_assets.npz'))
 NODE_MEAN = data['node_mean']
 NODE_STD = data['node_std']
 EDGE_MEAN = data['edge_mean']
