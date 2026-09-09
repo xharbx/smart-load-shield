@@ -87,6 +87,8 @@ labels.
 | `guardband_calibrate.py` | split-conformal calibration of the overvoltage guard band |
 | `baselines118.py` | same-data baselines on the 118-bus corpus |
 | `compute_burden.py` | computational-burden measurements |
+| `smoke_test.py` | whole pipeline end to end on a small fixture, on CPU |
+| `verify_notebooks.py` | checks the notebooks execute and match the modules |
 | `*_colab.ipynb` | notebooks that reproduce generation, training and burden on Colab |
 
 The 118-bus corpus is not committed here because of its size. It is
@@ -113,16 +115,46 @@ runs without regenerating the corpus.
 
 ```bash
 pip install -r requirements.txt
-
-cd code
-python gen_contingency_data.py     # 27-bus corpus, ~26 min on one CPU
-python make_grouped_split.py       # operating-point-disjoint split
-python -c "import boost_core; boost_core.main()"
-
-cd ../scale118
-python gen118.py                   # 118-bus corpus, ~82 min on one CPU
-python train118.py
 ```
+
+### The 27-bus results
+
+These run against the released checkpoint and split, so the printed numbers are
+the ones in the paper:
+
+```bash
+cd code
+python make_full_a0_paper.py   # deployed metrics, confusion / Vmin / vulnerability figures
+python local_analyses.py       # calibration, cross-head, boundary MAE, subgroups
+python screening_speedup.py    # screening throughput against the AC solver
+python baselines_cs.py         # non-graph baselines
+python testbench.py            # verification harness
+```
+
+To rebuild the corpus and split from scratch beforehand:
+
+```bash
+python gen_contingency_data.py   # ~26 min on one CPU
+python make_grouped_split.py     # operating-point-disjoint 70/15/15
+```
+
+### The 118-bus results
+
+```bash
+cd scale118
+python gen118.py                 # corpus + split, ~82 min on one CPU
+```
+
+`train118.py` is a module rather than a script; `train_118_colab.ipynb` drives it
+on a GPU, which is how the reported runs were produced. Directly:
+
+```python
+from train118 import build_data, train_eval
+d = build_data('contingency_data_118_v2.npz', 'grouped_split_118_v2.npz', 'cuda')
+res, model = train_eval(d, seed=0, epochs=150, bs=256, vmax=True)
+```
+
+Set `SLS118_DIR` if the corpus lives somewhere other than `scale118/`.
 
 Every stage uses fixed seeds, so the partition and the corpus are reproducible
 from this code. Note that GPU training is **not** bit-reproducible: `index_add_`
@@ -133,7 +165,12 @@ over five seeds, never from a single run.
 ## Verification
 
 ```bash
-python scale118/test_equivalence.py        # 25 checks, model equivalence
+python scale118/test_equivalence.py        # 25 checks: core118 == boost_core
 python scale118/verify_twosided_27bus.py   # 0 labels change under the two-sided rule
+python scale118/smoke_test.py              # whole 118-bus pipeline on a small fixture
 python scale118/verify_notebooks.py        # notebooks execute and match the modules
 ```
+
+Run `smoke_test.py` before `verify_notebooks.py`: it builds the small fixture the
+notebook check executes against. All four run on CPU in a few minutes and need no
+GPU, no Colab and no generated corpus.
