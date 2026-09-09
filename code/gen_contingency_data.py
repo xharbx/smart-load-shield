@@ -81,9 +81,22 @@ def base_edge_feats(sim):
             f[k,1] = (sim.res_trafo.at[bi,'p_hv_mw'] or 0)/100.0
     return np.nan_to_num(f)
 
-def risk_of(vmin, conv):
+V_HI = 1.05     # normal-band upper limit; also the Unstable trigger of Eq. (risk)
+
+def risk_of(vmin, vmax, conv):
+    """
+    Eq. (risk) of the manuscript, BOTH sides enforced.
+
+    This previously took only vmin, so the code implemented a one-sided rule
+    under a two-sided equation.  On THIS corpus the two agree exactly: the
+    highest bus voltage ever observed is 1.04500 p.u. (bus 5 holding its 1.045
+    schedule; bus 4 is scheduled at 1.050 but is Q-limited off schedule in every
+    converged scenario, reaching only 1.0438).  Re-labelling the released data
+    with this function changes ZERO labels -- see verify_twosided_27bus.py --
+    so no published 27-bus result is affected.
+    """
     if not conv: return 2
-    if vmin < 0.90: return 2
+    if vmin < 0.90 or vmax >= V_HI: return 2
     if vmin < 0.95: return 1
     return 0
 
@@ -116,16 +129,16 @@ while n < TARGET:
     sim, conv = solve(load_s, pv_mw, trip)
     if conv:
         vbus = np.array([sim.res_bus.at[b,'vm_pu'] for b in bus_ids], np.float32)
-        vmin = float(np.nanmin(vbus)); vuln = (vbus < 0.95).astype(np.float32)
+        vmin = float(np.nanmin(vbus)); vmax = float(np.nanmax(vbus)); vuln = (vbus < 0.95).astype(np.float32)
     else:
-        vbus = np.zeros(n_bus, np.float32); vmin = 0.0; vuln = np.ones(n_bus, np.float32)
+        vbus = np.zeros(n_bus, np.float32); vmin = 0.0; vmax = 0.0; vuln = np.ones(n_bus, np.float32)
 
     insvc = np.ones(n_branch, np.float32)
     for typ, bi in trip:
         k = branches.index((typ, bi)); insvc[k] = 0.0
 
     NF.append(nf); EF.append(ef); INSVC.append(insvc); OPC.append([load_s, pv_mw])
-    T_vmin.append(vmin); T_risk.append(risk_of(vmin, conv)); T_vuln.append(vuln); T_div.append(0.0 if conv else 1.0)
+    T_vmin.append(vmin); T_risk.append(risk_of(vmin, vmax, conv)); T_vuln.append(vuln); T_div.append(0.0 if conv else 1.0)
     T_vbus.append(vbus)
     n += 1
     if n % 2000 == 0:

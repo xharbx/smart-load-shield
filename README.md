@@ -1,100 +1,139 @@
-# Smart Load Shield — Leakage-Free Contingency Screening with a Physics-Guided Graph Neural Network
+# Smart Load Shield — a switched-topology graph-attention surrogate for post-contingency voltage-security screening
 
-Code, data, trained model, and interactive dashboard for the paper:
+Code, data and an interactive dashboard for **leakage-free post-contingency
+voltage-security screening** on a renewable-integrated 27-bus network and on the
+standard IEEE 118-bus system.
 
-> **A Physics-Guided Graph Neural Network for Proactive Bus Voltage Security Screening of Renewable-Energy-Integrated Power Systems**
-> Salah Harb and Ahmad Harb, *IEEE Canadian Journal of Electrical and Computer Engineering* (under review).
+This repository accompanies:
 
-## What this is
+> S. Harb and A. Harb, *"Post-Contingency Voltage Security Screening in
+> Renewable-Rich Power Systems Using a Switched-Topology Graph Attention
+> Network,"* **IEEE Canadian Journal of Electrical and Computer Engineering**
+> (under review), 2026.
 
-The standard way to pose learning-based voltage-stability monitoring — classify the grid's **present** state — is *circular*: the risk label is a deterministic function of the very bus voltages the model is given, so a near-perfect score can mean the network reconstructed its own inputs rather than predicting anything. We diagnose this **target-leakage** failure mode and reformulate the task **predictively**: from the *pre-contingency* state and a proposed disturbance, forecast the *post-contingency* risk class, minimum bus voltage, per-bus vulnerability, and power-flow divergence — **without solving the post-contingency power flow**.
+---
 
-A physics-guided graph-attention surrogate (masked, coupled multi-task) reasons over the switched post-contingency topology against an AC power-flow oracle on a renewable-integrated 27-bus network (the 26-bus benchmark plus an embedded PV generator at Bus 27).
+## What the task is, and what it is not
 
-### Headline results (deployed model, operating-point-disjoint test split)
+Given the **pre-contingency** operating state and a proposed disturbance, the
+surrogate predicts the **post-contingency** risk class, minimum bus voltage,
+per-bus vulnerability and power-flow divergence, without solving the
+post-contingency power flow.
 
-| Metric | Value |
+Two boundaries are worth stating plainly, because both were tightened during
+review:
+
+- **This is steady-state post-contingency voltage *security*, not voltage
+  stability.** Every label is a single AC power-flow solution. There is no
+  time-domain simulation, no fault duration, no clearing time and no
+  voltage-recovery trajectory, and the code makes no transient, dynamic or
+  rotor-angle claim.
+- **No physical constraint is embedded in the loss or the network.** No
+  power-flow equation, power-balance residual or electrical-parameter
+  constraint enters the objective. What grounding exists is that every training
+  target comes from an AC power-flow oracle, and that message passing is
+  constrained to the switched post-contingency topology. Representing topology
+  through a graph is established practice and is adopted here, not proposed.
+
+## The leakage problem this repository exists to avoid
+
+Classifying the grid's **present** state is circular: the risk label is a
+deterministic threshold on the very bus voltages the model receives, so a model
+can score highly by inverting its own labelling rule rather than by predicting
+anything.
+
+An earlier version of this system did exactly that, reaching near-perfect
+apparent accuracy. **Those numbers are not in this repository and should not be
+cited.** The pipeline here is the leakage-free reformulation: inputs are strictly
+pre-contingency, the contingency enters only as a mask over the topology, and the
+train/validation/test split is disjoint by *operating point*, not by scenario.
+
+A direct test of leakage-freedom is included: at a representative operating
+point, 84 distinct contingencies share byte-identical node features yet span all
+three risk classes, so no function of the node features alone can reproduce the
+labels.
+
+---
+
+## Layout
+
+| Path | What it is |
 |---|---|
-| Risk accuracy | **98.1%** |
-| False-safe (unstable predicted stable) | **0 of 1,899** (zero on all 5 seeds) |
-| Minimum-voltage MAE / R² | 0.008 p.u. / 0.96 |
-| Expected calibration error | 0.035 |
-| Per-bus vulnerability ROC-AUC / PR-AUC | 0.998 / 0.997 |
-| Nonconvergence-head F1 | 0.98 |
-| Screening speedup vs Newton–Raphson | ~40× (surrogate-only, single CPU core) |
+| `code/ieee26_bus.py` | the 26-bus benchmark plus the Bus-27 PV plant |
+| `code/gen_contingency_data.py` | 27-bus corpus generator (30,000 scenarios) |
+| `code/make_grouped_split.py` | operating-point-disjoint 70/15/15 split |
+| `code/boost_core.py` | the surrogate: model, training and evaluation |
+| `code/model_cs.py` | the dense reference implementation of the model |
+| `code/baselines_cs.py`, `code/baselines_gnn.py` | same-data baselines (27-bus) |
+| `code/testbench.py`, `code/local_analyses.py` | evaluation and per-case analyses |
+| `code/screening_speedup.py` | screening-throughput benchmark against the AC solver |
+| `code/contingency_data.npz` | the 27-bus corpus |
+| `code/grouped_split.npz` | the split, with train-only normalisation statistics |
+| `code/full_a0.pt` | the deployed 27-bus checkpoint |
+| `code/metrics/*.json` | the recorded results behind the reported numbers |
+| `dashboard/` | Flask + Cytoscape.js control-room dashboard |
+| `notebooks/` | Colab notebooks for the 27-bus experiments |
+| `scale118/` | the IEEE 118-bus scalability study |
 
-A held-out-branch study honestly bounds the safety property: it holds across unseen operating conditions but degrades on contingencies whose branch was never seen in training — a regime an inference-time membership check can route to the exact solver.
+### `scale118/`
 
-## Repository layout
+| File | What it is |
+|---|---|
+| `gen118.py` | 118-bus generator: schedule band, operating-point admission test, two-sided risk rule |
+| `core118.py` | memory-efficient rewrite (sparse edge encoding, factorised attention) |
+| `train118.py` | training, evaluation, screening benchmark, Unstable-class breakdown |
+| `test_equivalence.py` | proves `core118` is numerically identical to `boost_core` |
+| `verify_twosided_27bus.py` | proves the two-sided rule changes **zero** 27-bus labels |
+| `guardband_calibrate.py` | split-conformal calibration of the overvoltage guard band |
+| `baselines118.py` | same-data baselines on the 118-bus corpus |
+| `compute_burden.py` | computational-burden measurements |
+| `*_colab.ipynb` | notebooks that reproduce generation, training and burden on Colab |
 
-```
-smart-load-shield/
-├── code/                        # reproduction pipeline (run scripts from here)
-│   ├── boost_core.py            #   model definition + training (CSGNNv2, masked coupled multi-task)
-│   ├── ieee26_bus.py            #   27-bus network builder (26-bus benchmark + PV Bus 27)
-│   ├── gen_contingency_data.py  #   -> contingency_data.npz  (30k leakage-free scenarios)
-│   ├── make_grouped_split.py    #   -> grouped_split.npz     (operating-point-disjoint split)
-│   ├── make_full_a0_paper.py    #   deployed metrics + confusion / Vmin-parity / vulnerability figures
-│   ├── local_analyses.py        #   calibration, cross-head consistency, boundary-band MAE, subgroup recall, reliability figure
-│   ├── make_heldout_split.py    #   held-out-branch generalisation split
-│   ├── screening_speedup.py     #   oracle-vs-surrogate timing (~40x)
-│   ├── baselines_gnn.py         #   graph baselines (GCN, GraphSAGE, node-only GAT)
-│   ├── baselines_cs.py          #   non-graph baselines (logistic regression, random forest, MLP)
-│   ├── testbench.py             #   50-category, 210-assertion cross-layer verification harness
-│   ├── full_a0.pt               #   deployed model weights (masked coupled multi-task)
-│   ├── grouped_split.npz        #   the split + train-only normalisation stats
-│   ├── contingency_data.npz     #   30,000-scenario dataset (~20 MB)
-│   └── metrics/*.json           #   every number reported in the paper, from the deployed model
-├── dashboard/                   # self-contained Flask + Cytoscape.js control-room demo
-│   ├── app.py                   #   loads full_a0.pt (the deployed coupled model)
-│   ├── templates/index.html
-│   └── screenshots/             #   the three dashboard figures in the paper
-└── notebooks/                   # Colab notebooks (GPU): training, 5-seed baselines, held-out study, ablation, PV retrains
-```
+The 118-bus corpus is not committed here because of its size. It is
+**deterministically reproducible**: `python gen118.py` regenerates both the
+corpus and its operating-point-disjoint split from a fixed seed.
 
-## Quick start
+---
 
-### Run the dashboard
+## Running the dashboard
+
 ```bash
 cd dashboard
 pip install -r requirements.txt
-python app.py            # then open http://localhost:5000
+python app.py            # then open http://localhost:5003
 ```
-Adjust load and PV, click any branch to trip it, and see the predicted risk band, per-bus vulnerability heatmap, and contingency consequences update in place — driven by the deployed model.
 
-### Reproduce the paper numbers and figures
+Adjust load and PV output, click any branch to trip it, and the predicted risk
+band, per-bus vulnerability heatmap and post-contingency consequences update in
+place, driven by the deployed leakage-free checkpoint. The dashboard carries its
+own copy of the checkpoint, the split statistics and the topology metadata, so it
+runs without regenerating the corpus.
+
+## Reproducing
+
 ```bash
+pip install -r requirements.txt
+
 cd code
-pip install -r ../requirements.txt
-python make_full_a0_paper.py    # deployed metrics + confusion / Vmin / vulnerability figures + cs_results_full_a0.json
-python local_analyses.py        # calibration / cross-head / boundary-MAE / subgroup + reliability_cs.png
-python screening_speedup.py     # ~40x screening speedup
-python baselines_cs.py          # non-graph baselines (Table II)
-python testbench.py             # verification harness (209 pass / 1 warning / 0 fail)
-```
-`make_full_a0_paper.py` loads the released `full_a0.pt` on the `grouped_split.npz` test split, so the printed metrics match the paper exactly. To regenerate the dataset and split from scratch, run `gen_contingency_data.py` then `make_grouped_split.py` first (dataset generation ≈ 26 min on one CPU).
+python gen_contingency_data.py     # 27-bus corpus, ~26 min on one CPU
+python make_grouped_split.py       # operating-point-disjoint split
+python -c "import boost_core; boost_core.main()"
 
-### Retrain (Colab, GPU)
-The notebooks in `notebooks/` reproduce the training and the study tables. They mount Google Drive and read/write a `smart_load_shield_boost` folder containing `contingency_data.npz`, `grouped_split.npz`, and `boost_core.py`. Training completes in a few minutes per seed on an NVIDIA A100.
-
-## Model
-
-- **Architecture:** `CSGNNv2` — node/edge encoders → 3 masked graph-attention layers → pooled multi-task heads (risk, minimum voltage, per-bus vulnerability, divergence). 163,592 parameters; runs on a single CPU core.
-- **Deployed weights:** `full_a0.pt` — masked, **coupled** multi-task (auxiliary gradients into the shared trunk), best of five seeds selected on validation at zero false-safe.
-- **Split:** grouped by operating point (no operating point shared between train and test), with train-only normalisation — closes the operating-point and preprocessing leakage paths.
-
-## Citation
-
-```bibtex
-@article{harb2026smartloadshield,
-  author  = {Salah Harb and Ahmad Harb},
-  title   = {A Physics-Guided Graph Neural Network for Proactive Bus Voltage Security Screening of Renewable-Energy-Integrated Power Systems},
-  journal = {IEEE Canadian Journal of Electrical and Computer Engineering},
-  year    = {2026},
-  note    = {Code and data: \url{https://github.com/xharbx/smart-load-shield}}
-}
+cd ../scale118
+python gen118.py                   # 118-bus corpus, ~82 min on one CPU
+python train118.py
 ```
 
-## License
+Every stage uses fixed seeds, so the partition and the corpus are reproducible
+from this code. Note that GPU training is **not** bit-reproducible: `index_add_`
+on CUDA uses atomics, so run-to-run spread at a fixed seed can exceed
+seed-to-seed spread. Results are therefore reported as mean ± standard deviation
+over five seeds, never from a single run.
 
-Released under the MIT License — see [`LICENSE`](LICENSE).
+## Verification
+
+```bash
+python scale118/test_equivalence.py        # 25 checks, model equivalence
+python scale118/verify_twosided_27bus.py   # 0 labels change under the two-sided rule
+python scale118/verify_notebooks.py        # notebooks execute and match the modules
+```
