@@ -260,7 +260,11 @@ def predict_cs(base_sim, tripped_slots):
     with torch.no_grad():
         risk, vmin, vuln, div, _vb = model(nf.unsqueeze(0), dense, adj)
     rp = F.softmax(risk, 1).squeeze(0).numpy(); rc = int(risk.argmax(1).item())
-    vuln_cs = vuln.squeeze(0).numpy()
+    # vuln_h emits logits (boost_core.py:96); every other consumer in
+    # boost_core sigmoids it first. The frontend renders this field as a
+    # percentage, and the diverged path pins it to 1.0, so it must be a
+    # probability in [0, 1] -- without this the map showed raw logits.
+    vuln_cs = torch.sigmoid(vuln).squeeze(0).numpy()
     return {
         'risk_class': rc,
         'risk_label': ['STABLE', 'MARGINAL', 'UNSTABLE'][rc],
